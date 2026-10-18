@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { Product } = require('../models');
-const { auth, admin, wrap } = require('../middleware');
+const { auth, admin, wrap } = require('../authMiddleware');
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const CATALOG_TTL_MS = 15 * 60 * 1000;
 let lastRefreshAt = 0;

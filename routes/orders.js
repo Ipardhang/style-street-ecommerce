@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { Order, Product } = require('../models');
-const { auth, admin, wrap } = require('../middleware');
+const { auth, admin, wrap } = require('../authMiddleware');
 
 // Checkout: prices and totals are computed on the server, never trusted from the client
 router.post('/', auth, wrap(async (req, res) => {
