@@ -1,0 +1,24 @@
+name: Node syntax check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node --check server.js
+      - run: node --check authMiddleware.js
+      - run: node --check models.js
+      - run: node --check routes/auth.js
+      - run: node --check routes/orders.js
+      - run: node --check routes/products.js
+      - run: node --check public/app.js
+      - run: node --check seed.js

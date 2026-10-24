@@ -1,10 +1,12 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const readStore = (key, fallback) => { try { const value = JSON.parse(localStorage.getItem(key) || 'null'); return value ?? fallback; } catch { return fallback; } };
 let token = localStorage.getItem('token');
-let user = JSON.parse(localStorage.getItem('user') || 'null');
-let cart = JSON.parse(localStorage.getItem('cart') || '[]'); // [{id,name,price,qty}]
+let user = readStore('user', null);
+let cart = Array.isArray(readStore('cart', [])) ? readStore('cart', []) : []; // [{id,name,price,qty}]
+
 let products = [], registering = false, activeCategory = 'all', visibleCount = 24;
-let wishlist = JSON.parse(localStorage.getItem('wishlist') || '[]');
+let wishlist = Array.isArray(readStore('wishlist', [])) ? readStore('wishlist', []) : [];
 const money = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 let searchTimer;
 function syncSearch(value) { $('#search').value = value; clearTimeout(searchTimer); searchTimer = setTimeout(() => run(loadProducts), 350); }
@@ -154,7 +156,10 @@ function addToCart(id) {
 }
 function changeQty(id, d) {
   const i = cart.find((x) => x.id === id);
+  const p = products.find((x) => x._id === id);
+  if (!i) return;
   i.qty += d;
+  if (p) i.qty = Math.min(i.qty, Number(p.stock) || 0);
   if (i.qty <= 0) cart = cart.filter((x) => x.id !== id);
   saveCart(); renderCart();
 }
@@ -168,7 +173,9 @@ function renderCart() {
 async function checkout() {
   if (!user) { show('auth'); return notify('Please log in to check out', true); }
   await run(async () => {
-    await api('/orders', 'POST', { items: cart.map((i) => ({ productId: i.id, qty: i.qty })), address: $('#address').value });
+    const address = String($('#address').value || '').trim();
+    if (address.length < 10 || address.length > 500) throw new Error('Delivery address must be 10-500 characters');
+    await api('/orders', 'POST', { items: cart.map((i) => ({ productId: i.id, qty: i.qty })), address });
     cart = []; saveCart(); show('orders'); notify('Order placed successfully!');
   });
 }

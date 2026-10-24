@@ -6,17 +6,32 @@ const CATALOG_TTL_MS = 15 * 60 * 1000;
 let lastRefreshAt = 0;
 let refreshInFlight = null;
 
+const toOptionalNumber = (value, fallback = undefined) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
 const pick = ({ name, description, price, stock, category, gender, image, images, brand, mrp, discountPercent, sourceUrl, sourceName }) => ({
-  name, description, price, stock, category, gender, image,
+  name: String(name || '').trim(),
+  description: String(description || ''),
+  price: toOptionalNumber(price, 0),
+  stock: toOptionalNumber(stock, 0),
+  category: String(category || 'General'),
+  gender: String(gender || ''),
+  image: String(image || ''),
   images: Array.isArray(images) ? images : (image ? [image] : []),
-  brand, mrp, discountPercent, sourceUrl, sourceName
+  brand: String(brand || 'StyleStreet Edit'),
+  mrp: toOptionalNumber(mrp),
+  discountPercent: toOptionalNumber(discountPercent, 0),
+  sourceUrl: String(sourceUrl || ''),
+  sourceName: String(sourceName || '')
 });
 
 router.get('/', wrap(async (req, res) => {
   const q = {};
   if (req.query.search) q.name = new RegExp(escapeRegex(req.query.search), 'i');
   if (req.query.category) q.category = req.query.category;
-  res.json(await Product.find(q).sort('-createdAt'));
+  res.json(await Product.find(q).sort('-createdAt').limit(200));
 }));
 
 function toMyntraProduct(item, searchCategory) {
@@ -58,86 +73,43 @@ async function refreshMyntraCatalogue() {
     
 
 const searches = [
-    'men shirts',
-  'men t-shirts',
-  'men jeans',
-  'men trousers',
-  'men pants',
-  'men jackets',
-  'men hoodies',
-  'men sweatshirts',
-  'men sweaters',
-  'men shorts',
-  'men casual wear',
-  'men formal wear',
-  'men ethnic wear',
-  'men kurta',
-  'men blazers',
-  'men clothing',
-  'women shirts',
-  'women t-shirts',
-  'women jeans',
-  'women trousers',
-  'women pants',
-  'women jackets',
-  'women hoodies',
-  'women sweatshirts',
-  'women sweaters',
-  'women tops',
-  'women dresses',
-  'women skirts',
-  'women shorts',
-  'women jumpsuits',
-  'women ethnic wear',
-  'women kurta',
-  'women sarees',
-  'women lehenga',
-  'women blazers',
-  'women casual wear',
-  'women formal wear',
-  'women clothing',
-  'shoes',
-  'handbags',
-  'backpacks',
-  'fashion accessories',
-  'watches',
-  'men watches',
-  'women watches',
-  'sunglasses',
-  'jewellery',
-  'wallets belts',
-  'beauty',
-  'makeup',
-  'skincare',
-  'perfume',
-  'lipstick',
-  'face wash',
-  'Body wash'
-];
+    'men clothing shoes accessories',
+    'women clothing shoes accessories',
+    'streetwear men women',
+    'bags watches jewellery sunglasses',
+    'beauty skincare makeup fragrance',
+    'fashion sale trending'
+  ];
 
 
     const settled = await Promise.allSettled(searches.map(async (query) => {
-      const response = await fetch('https://api.reefapi.com/myntra/v1/search', {
-        method: 'POST',
-        headers: { 'x-api-key': key, 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ query, page: 1, limit: 20 })
-      });
-      if (!response.ok) throw new Error(`Myntra provider returned HTTP ${response.status}`);
-      const payload = await response.json();
-      if (payload.ok === false) throw new Error(payload.error?.message || 'Myntra provider request failed');
-      const rows = payload.data?.results || payload.data?.products || [];
-      return rows.map((item) => toMyntraProduct(item, query)).filter(Boolean);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch('https://api.reefapi.com/myntra/v1/search', {
+          method: 'POST',
+          headers: { 'x-api-key': key, 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ query, page: 1, limit: 50 }),
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error(`Myntra provider returned HTTP ${response.status}`);
+        const payload = await response.json();
+        if (payload.ok === false) throw new Error(payload.error?.message || 'Myntra provider request failed');
+        const rows = payload.data?.results || payload.data?.products || [];
+        return rows.map((item) => toMyntraProduct(item, query)).filter(Boolean);
+      } finally {
+        clearTimeout(timer);
+      }
     }));
     const remote = settled.filter((r) => r.status === 'fulfilled').flatMap((r) => r.value);
     if (!remote.length) {
       const errors = settled.filter((r) => r.status === 'rejected');
       throw new Error(errors[0]?.reason?.message || 'The provider returned no Myntra products. Check the API key and provider access.');
     }
-    await Promise.all(remote.map((item) => Product.updateOne(
-      { externalId: item.externalId }, { $set: item }, { upsert: true }
-    )));
+    const unique = [...new Map(remote.map((item) => [item.externalId, item])).values()].slice(0, 500);
+    await Product.bulkWrite(unique.map((item) => ({ updateOne: { filter: { externalId: item.externalId }, update: { $set: item }, upsert: true } })), { ordered: false });
     lastRefreshAt = Date.now();
-    return { refreshed: true, onlineCount: remote.length, warning: settled.some((r) => r.status === 'rejected') ? 'Some Myntra category searches failed; showing the products fetched successfully.' : '' };
+    return { refreshed: true, onlineCount: unique.length, warning: settled.some((r) => r.status === 'rejected') ? 'Some Myntra category searches failed; showing the products fetched successfully.' : '' };
   })();
 
   try { return await refreshInFlight; }
@@ -149,12 +121,12 @@ router.get('/sync-online', wrap(async (req, res) => {
   try {
     refreshInfo = await refreshMyntraCatalogue();
   } catch (error) {
-    refreshInfo = { warning: `Could not refresh Myntra products: ${error.message}. Showing the last saved Myntra catalogue if available.` };
+    refreshInfo = { warning: 'Could not refresh the online catalogue. Showing the last saved catalogue if available.' };
   }
 
   const q = { externalId: /^myntra-reefapi-/ };
   if (req.query.search) q.name = new RegExp(escapeRegex(req.query.search), 'i');
-  const products = await Product.find(q).sort('name');
+  const products = await Product.find(q).sort('name').limit(200);
   const warning = refreshInfo.warning || (!products.length ? 'No Myntra products are saved yet. Add a valid MYNTRA_API_KEY to .env, then reload this page.' : '');
   res.json({ products, source: products.length ? 'myntra-provider' : 'not-connected', onlineCount: refreshInfo.onlineCount || products.length, warning });
 }));

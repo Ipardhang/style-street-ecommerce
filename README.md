@@ -1,42 +1,29 @@
-# Style Street – Full-Stack E-Commerce App
+# Style Street - Full-Stack E-Commerce App
 
 **Stack:** Node.js, Express, MongoDB (Mongoose), JWT auth, bcrypt, vanilla JS frontend.
 
-## Myntra product catalogue setup
+## Setup
 
-The shop automatically refreshes products when the page opens (and reuses a 15-minute in-memory refresh window to avoid unnecessary API calls). It fetches product names, brands, images, current listed prices, MRP/discounts, categories and short descriptions from a third-party Myntra catalogue API, then caches results in MongoDB.
-
-**Important:** Myntra's official Developer Centre is designed for approved sellers/marketplace partners and is not a general public shopping catalogue API. This project therefore includes an adapter for ReefAPI, a third-party data provider. It is not an official Myntra API. Before using it in a public/commercial store, review the provider's current terms, data rights, pricing and permitted use. No website scraping is implemented.
-
-1. Install Node.js 18+ and MongoDB (local or MongoDB Atlas).
+1. Install Node.js 18+ and MongoDB (local replica set or MongoDB Atlas).
 2. Run `npm install`.
 3. Copy `.env.example` to `.env`.
-4. Set `MONGO_URI` and a strong `JWT_SECRET`.
-5. Create a ReefAPI account at https://reefapi.com/myntra-api and place its key in `MYNTRA_API_KEY` in `.env`. Do not expose the key in frontend JavaScript or commit `.env` to Git.
-6. Run `npm start` and open http://localhost:3000.
+4. Set `MONGO_URI` and a random `JWT_SECRET` of at least 32 characters.
+5. For admin bootstrap, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (at least 12 characters). The seed script never hard-codes production credentials.
+6. For the optional live Myntra catalogue, set `MYNTRA_API_KEY`. This project uses ReefAPI, a third-party provider; it is not affiliated with Myntra.
+7. Run `npm run seed` once, then `npm start`.
 
-The provider key is required to fetch live Myntra catalogue data. Without it, the site shows a clear setup warning and does not silently label sample products as Myntra products. If the provider is temporarily unavailable, the last saved Myntra products remain available from MongoDB.
+## Security and production notes
 
-## Refresh behaviour
+- Checkout uses a MongoDB transaction so inventory decrements and order creation commit or roll back together. Use MongoDB Atlas or a replica-set deployment; standalone MongoDB does not support multi-document transactions.
+- Login and registration are rate-limited in-process. For a multi-instance deployment, move rate limiting to Redis or an equivalent shared store.
+- Do not commit `.env`, API keys, or admin credentials.
+- Production responses avoid returning raw server errors.
+- Product and order queries are bounded to prevent unbounded responses.
+- Prices and stock are re-read server-side at checkout; client-side cart data is never trusted for payment totals.
+- The checkout is a demo and does not charge real payments or reserve third-party inventory.
 
-On first catalogue request after server startup, the backend searches six catalogue groups (men clothing, women clothing, shoes, bags, watches/jewellery/sunglasses, and beauty/skincare) and saves returned products. Refreshes are throttled to once every 15 minutes per running server process. A browser search filters the saved catalogue without making a new provider call. The current setup can make up to six provider requests per refresh; see the provider's current pricing before enabling it.
+## Myntra catalogue
 
-## Run
+The catalogue refresh runs at most once every 15 minutes per server process and uses six grouped searches, with an 8-second provider timeout. Results are cached in MongoDB. Search on the site filters the cached catalogue; it does not create a provider request per keystroke.
 
-```bash
-npm install
-cp .env.example .env
-# edit .env, then:
-npm start
-```
-
-## Existing app features
-
-- Product search, category filtering, sorting and product photo galleries
-- Cart, wishlist, login/register, orders and admin product management
-- MongoDB-backed product cache
-- Myntra product cards link to the source product page when a source URL is supplied
-
-## Notes
-
-Prices and stock can change at the source. This demo checkout is not connected to Myntra, does not reserve Myntra inventory and does not process real payments. Do not imply that Style Street is affiliated with Myntra.
+Review the provider's current terms, pricing, and data rights before commercial use.
