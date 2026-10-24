@@ -24,12 +24,14 @@ const productSchema = new Schema({
   sourceName: { type: String, default: '', maxlength: 120 },
   externalId: { type: String, unique: true, sparse: true },
 }, { timestamps: true });
+
 productSchema.index({ name: 1 });
 productSchema.index({ category: 1, gender: 1 });
 productSchema.index({ externalId: 1 }, { unique: true, sparse: true });
+
 const Product = mongoose.model('Product', productSchema);
 
-const Order = mongoose.model('Order', new Schema({
+const orderSchema = new Schema({
   user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   items: [{
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -41,7 +43,9 @@ const Order = mongoose.model('Order', new Schema({
   address: { type: String, required: true, minlength: 10, maxlength: 500, trim: true },
   status: { type: String, enum: ['Pending', 'Shipped', 'Delivered', 'Cancelled'], default: 'Pending' },
 }, { timestamps: true });
-const orderSchema = Order.schema;
+
 orderSchema.index({ user: 1, createdAt: -1 });
+
+const Order = mongoose.model('Order', orderSchema);
 
 module.exports = { User, Product, Order };
