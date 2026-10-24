@@ -58,86 +58,42 @@ async function refreshMyntraCatalogue() {
     
 
 const searches = [
-    'men shirts',
-  'men t-shirts',
-  'men jeans',
-  'men trousers',
-  'men pants',
-  'men jackets',
-  'men hoodies',
-  'men sweatshirts',
-  'men sweaters',
-  'men shorts',
-  'men casual wear',
-  'men formal wear',
-  'men ethnic wear',
-  'men kurta',
-  'men blazers',
-  'men clothing',
-  'women shirts',
-  'women t-shirts',
-  'women jeans',
-  'women trousers',
-  'women pants',
-  'women jackets',
-  'women hoodies',
-  'women sweatshirts',
-  'women sweaters',
-  'women tops',
-  'women dresses',
-  'women skirts',
-  'women shorts',
-  'women jumpsuits',
-  'women ethnic wear',
-  'women kurta',
-  'women sarees',
-  'women lehenga',
-  'women blazers',
-  'women casual wear',
-  'women formal wear',
-  'women clothing',
-  'shoes',
-  'handbags',
-  'backpacks',
-  'fashion accessories',
-  'watches',
-  'men watches',
-  'women watches',
-  'sunglasses',
-  'jewellery',
-  'wallets belts',
-  'beauty',
-  'makeup',
-  'skincare',
-  'perfume',
-  'lipstick',
-  'face wash',
-  'Body wash'
-];
+    'men clothing shoes accessories',
+    'women clothing shoes accessories',
+    'streetwear men women',
+    'bags watches jewellery sunglasses',
+    'beauty skincare makeup fragrance',
+    'fashion sale trending'
+  ];
 
 
     const settled = await Promise.allSettled(searches.map(async (query) => {
-      const response = await fetch('https://api.reefapi.com/myntra/v1/search', {
-        method: 'POST',
-        headers: { 'x-api-key': key, 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ query, page: 1, limit: 20 })
-      });
-      if (!response.ok) throw new Error(`Myntra provider returned HTTP ${response.status}`);
-      const payload = await response.json();
-      if (payload.ok === false) throw new Error(payload.error?.message || 'Myntra provider request failed');
-      const rows = payload.data?.results || payload.data?.products || [];
-      return rows.map((item) => toMyntraProduct(item, query)).filter(Boolean);
-    }));
-    const remote = settled.filter((r) => r.status === 'fulfilled').flatMap((r) => r.value);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch('https://api.reefapi.com/myntra/v1/search', {
+          method: 'POST',
+          headers: { 'x-api-key': key, 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ query, page: 1, limit: 50 }),
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error(`Myntra provider returned HTTP ${response.status}`);
+        const payload = await response.json();
+        if (payload.ok === false) throw new Error(payload.error?.message || 'Myntra provider request failed');
+        const rows = payload.data?.results || payload.data?.products || [];
+        return rows.map((item) => toMyntraProduct(item, query)).filter(Boolean);
+      } finally {
+        clearTimeout(timer);
+      }
+    }));const remote = settled.filter((r) => r.status === 'fulfilled').flatMap((r) => r.value);
     if (!remote.length) {
       const errors = settled.filter((r) => r.status === 'rejected');
       throw new Error(errors[0]?.reason?.message || 'The provider returned no Myntra products. Check the API key and provider access.');
     }
-    await Promise.all(remote.map((item) => Product.updateOne(
-      { externalId: item.externalId }, { $set: item }, { upsert: true }
-    )));
+    const unique = [...new Map(remote.map((item) => [item.externalId, item])).values()];
+    await Product.bulkWrite(unique.map((item) => ({ updateOne: { filter: { externalId: item.externalId }, update: { $set: item }, upsert: true } })), { ordered: false });
     lastRefreshAt = Date.now();
-    return { refreshed: true, onlineCount: remote.length, warning: settled.some((r) => r.status === 'rejected') ? 'Some Myntra category searches failed; showing the products fetched successfully.' : '' };
+    return { refreshed: true, onlineCount: unique.length, warning: settled.some((r) => r.status === 'rejected') ? 'Some Myntra category searches failed; showing the products fetched successfully.' : '' };
   })();
 
   try { return await refreshInFlight; }
