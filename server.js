@@ -19,6 +19,9 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '100kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const { rateLimit } = require('./authMiddleware');
+app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 180 }));
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
