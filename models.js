@@ -22,7 +22,7 @@ const productSchema = new Schema({
   discountPercent: { type: Number, min: 0, max: 100 },
   sourceUrl: { type: String, default: '', maxlength: 1000 },
   sourceName: { type: String, default: '', maxlength: 120 },
-  externalId: { type: String, unique: true, sparse: true },
+  externalId: { type: String },
 }, { timestamps: true });
 
 productSchema.index({ name: 1 });
