@@ -6,17 +6,32 @@ const CATALOG_TTL_MS = 15 * 60 * 1000;
 let lastRefreshAt = 0;
 let refreshInFlight = null;
 
+const toOptionalNumber = (value, fallback = undefined) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
 const pick = ({ name, description, price, stock, category, gender, image, images, brand, mrp, discountPercent, sourceUrl, sourceName }) => ({
-  name, description, price, stock, category, gender, image,
+  name: String(name || '').trim(),
+  description: String(description || ''),
+  price: toOptionalNumber(price, 0),
+  stock: toOptionalNumber(stock, 0),
+  category: String(category || 'General'),
+  gender: String(gender || ''),
+  image: String(image || ''),
   images: Array.isArray(images) ? images : (image ? [image] : []),
-  brand, mrp, discountPercent, sourceUrl, sourceName
+  brand: String(brand || 'StyleStreet Edit'),
+  mrp: toOptionalNumber(mrp),
+  discountPercent: toOptionalNumber(discountPercent, 0),
+  sourceUrl: String(sourceUrl || ''),
+  sourceName: String(sourceName || '')
 });
 
 router.get('/', wrap(async (req, res) => {
   const q = {};
   if (req.query.search) q.name = new RegExp(escapeRegex(req.query.search), 'i');
   if (req.query.category) q.category = req.query.category;
-  res.json(await Product.find(q).sort('-createdAt'));
+  res.json(await Product.find(q).sort('-createdAt').limit(200));
 }));
 
 function toMyntraProduct(item, searchCategory) {
@@ -85,12 +100,13 @@ const searches = [
       } finally {
         clearTimeout(timer);
       }
-    }));const remote = settled.filter((r) => r.status === 'fulfilled').flatMap((r) => r.value);
+    }));
+    const remote = settled.filter((r) => r.status === 'fulfilled').flatMap((r) => r.value);
     if (!remote.length) {
       const errors = settled.filter((r) => r.status === 'rejected');
       throw new Error(errors[0]?.reason?.message || 'The provider returned no Myntra products. Check the API key and provider access.');
     }
-    const unique = [...new Map(remote.map((item) => [item.externalId, item])).values()];
+    const unique = [...new Map(remote.map((item) => [item.externalId, item])).values()].slice(0, 500);
     await Product.bulkWrite(unique.map((item) => ({ updateOne: { filter: { externalId: item.externalId }, update: { $set: item }, upsert: true } })), { ordered: false });
     lastRefreshAt = Date.now();
     return { refreshed: true, onlineCount: unique.length, warning: settled.some((r) => r.status === 'rejected') ? 'Some Myntra category searches failed; showing the products fetched successfully.' : '' };
@@ -105,12 +121,12 @@ router.get('/sync-online', wrap(async (req, res) => {
   try {
     refreshInfo = await refreshMyntraCatalogue();
   } catch (error) {
-    refreshInfo = { warning: `Could not refresh Myntra products: ${error.message}. Showing the last saved Myntra catalogue if available.` };
+    refreshInfo = { warning: 'Could not refresh the online catalogue. Showing the last saved catalogue if available.' };
   }
 
   const q = { externalId: /^myntra-reefapi-/ };
   if (req.query.search) q.name = new RegExp(escapeRegex(req.query.search), 'i');
-  const products = await Product.find(q).sort('name');
+  const products = await Product.find(q).sort('name').limit(200);
   const warning = refreshInfo.warning || (!products.length ? 'No Myntra products are saved yet. Add a valid MYNTRA_API_KEY to .env, then reload this page.' : '');
   res.json({ products, source: products.length ? 'myntra-provider' : 'not-connected', onlineCount: refreshInfo.onlineCount || products.length, warning });
 }));
