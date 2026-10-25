@@ -1,29 +1,41 @@
-# Style Street - Full-Stack E-Commerce App
+# Style Street
 
-**Stack:** Node.js, Express, MongoDB (Mongoose), JWT auth, bcrypt, vanilla JS frontend.
+A full-stack fashion e-commerce application with authentication, product browsing, cart and checkout flows, inventory management, and a MongoDB-backed catalogue.
 
-## Setup
+## Tech stack
 
-1. Install Node.js 18+ and MongoDB (local replica set or MongoDB Atlas).
-2. Run `npm install`.
-3. Copy `.env.example` to `.env`.
-4. Set `MONGO_URI` and a random `JWT_SECRET` of at least 32 characters.
-5. For admin bootstrap, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (at least 12 characters). The seed script never hard-codes production credentials.
-6. For the optional live Myntra catalogue, set `MYNTRA_API_KEY`. This project uses ReefAPI, a third-party provider; it is not affiliated with Myntra.
-7. Run `npm run seed` once, then `npm start`.
+- Node.js + Express
+- MongoDB + Mongoose
+- JWT authentication + bcrypt
+- HTML, CSS, vanilla JavaScript
 
-## Security and production notes
+## Features
 
-- Checkout uses a MongoDB transaction so inventory decrements and order creation commit or roll back together. Use MongoDB Atlas or a replica-set deployment; standalone MongoDB does not support multi-document transactions.
-- Login and registration are rate-limited in-process. For a multi-instance deployment, move rate limiting to Redis or an equivalent shared store.
-- Do not commit `.env`, API keys, or admin credentials.
-- Production responses avoid returning raw server errors.
-- Product and order queries are bounded to prevent unbounded responses.
-- Prices and stock are re-read server-side at checkout; client-side cart data is never trusted for payment totals.
-- The checkout is a demo and does not charge real payments or reserve third-party inventory.
+- User registration and login
+- Product catalogue and search
+- Cart and checkout workflow
+- Inventory-aware ordering
+- Admin bootstrap flow
+- Server-side price and stock validation
+- MongoDB transaction support for checkout
+- Rate limiting on authentication endpoints
+- Optional third-party fashion catalogue integration
 
-## Myntra catalogue
+## Run locally
 
-The catalogue refresh runs at most once every 15 minutes per server process and uses six grouped searches, with an 8-second provider timeout. Results are cached in MongoDB. Search on the site filters the cached catalogue; it does not create a provider request per keystroke.
+```bash
+npm install
+cp .env.example .env
+npm run seed
+npm start
+```
 
-Review the provider's current terms, pricing, and data rights before commercial use.
+Configure `MONGO_URI`, a random 32+ character `JWT_SECRET`, and secure admin credentials in `.env`.
+
+For production-style checkout testing, use MongoDB Atlas or another replica-set deployment.
+
+## Security
+
+Never commit `.env`, API keys, admin credentials, or provider secrets. Checkout validates prices and stock on the server instead of trusting client-side totals.
+
+> Demo checkout only: it does not charge real payments or reserve third-party inventory.
